@@ -1,0 +1,20 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cortes GTA - Autorizacao</title></head>
+<body style="font-family:sans-serif;max-width:720px;margin:2rem auto;padding:0 1rem">
+<h1>Autorizacao concluida / Authorization complete</h1>
+<p id="msg">Copie o endereco completo desta pagina (barra do navegador) e cole no terminal do
+programa. / Copy the full address of this page and paste it into the program's terminal.</p>
+<p><button id="btn" type="button">Copiar endereco / Copy address</button></p>
+<p id="ok" style="color:green"></p>
+<script>
+// O codigo fica apenas na barra de endereco; esta pagina nao envia nada a lugar nenhum.
+document.getElementById("btn").onclick = function () {
+  navigator.clipboard.writeText(location.href).then(function () {
+    document.getElementById("ok").textContent = "Copiado / Copied";
+  });
+};
+if (!/[?&]code=/.test(location.search)) {
+  document.getElementById("msg").textContent =
+    "Nenhum codigo na URL. Inicie o login pelo programa. / No code in the URL. Start the login from the program.";
+}
+</script>
+</body></html>
