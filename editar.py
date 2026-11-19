@@ -6,8 +6,7 @@ from pathlib import Path
 # encoders de GPU: NVIDIA (nvenc), AMD (amf), Intel (qsv). "auto" tenta cada um e cai na CPU.
 ENCODERS = {
     "nvenc": ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "24"],
-    "amf": ["-c:v", "h264_amf", "-quality", "balanced", "-rc", "vbr_peak", "-qp_i", "24",
-            "-qp_p", "26"],
+    "amf": ["-c:v", "h264_amf", "-quality", "balanced", "-rc", "vbr_peak", "-b:v", "3M"],
     "qsv": ["-c:v", "h264_qsv", "-preset", "medium", "-global_quality", "24"],
 }
 _gpu_ruim: set[str] = set()   # encoders que ja falharam nesta execucao
@@ -68,6 +67,17 @@ def _legendas_finais(legendas, previa):
     return sorted(saida)
 
 
+def versao_leve(origem: Path, destino: Path) -> Path:
+    """Copia pequena (480p, audio mono) so para o Gemini analisar: upload de arquivo de 50+ MB
+    falhava/demorava; a edicao final continua usando o original."""
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(origem), "-vf", "scale=-2:480",
+                    "-r", "24", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30",
+                    "-c:a", "aac", "-ac", "1", "-b:a", "64k", "-movflags", "+faststart",
+                    str(destino)], check=True)
+    return destino
+
+
 def editar(origem: Path, saida: Path, plano: dict, cfg: dict) -> Path:
     """plano: {previa: (ini, fim)|None, legendas: [(ini, fim, texto)]} (tempos do clipe original)."""
     e = cfg["edicao"]
@@ -116,16 +126,27 @@ def editar(origem: Path, saida: Path, plano: dict, cfg: dict) -> Path:
     taxa = ["-maxrate", "4M", "-bufsize", "8M"]
     cpu = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"] + taxa
     try:
-        for nome in _encoders(e.get("encoder", "auto")):
-            if nome == "cpu":
-                break
-            try:   # GPU indisponivel nesta maquina: falha em silencio e tenta o proximo
-                subprocess.run(base + ENCODERS[nome] + taxa + fim, check=True,
-                               cwd=saida.parent, capture_output=True)
-                return saida
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                _gpu_ruim.add(nome)
-        subprocess.run(base + cpu + fim, check=True, cwd=saida.parent)
+        _codificar(base, fim, taxa, cpu, saida, _encoders(e.get("encoder", "auto")))
+        if saida.stat().st_size > LIMITE_BYTES:   # TikTok recusa > 64 MB: refaz mais leve na CPU
+            cpu2 = ["-c:v", "libx264", "-preset", "veryfast", "-b:v", "2M",
+                    "-maxrate", "2500k", "-bufsize", "5M"]
+            subprocess.run(base + cpu2 + fim, check=True, cwd=saida.parent)
     finally:
         ass.unlink(missing_ok=True)
     return saida
+
+
+LIMITE_BYTES = 60 * 1024 * 1024
+
+
+def _codificar(base, fim, taxa, cpu, saida, ordem) -> None:
+    for nome in ordem:
+        if nome == "cpu":
+            break
+        try:   # GPU indisponivel nesta maquina: falha em silencio e tenta o proximo
+            subprocess.run(base + ENCODERS[nome] + taxa + fim, check=True,
+                           cwd=saida.parent, capture_output=True)
+            return
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            _gpu_ruim.add(nome)
+    subprocess.run(base + cpu + fim, check=True, cwd=saida.parent)

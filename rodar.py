@@ -15,9 +15,12 @@ from pathlib import Path
 import yaml
 
 import twitch
-from editar import duracao_video, editar
+from editar import duracao_video, editar, versao_leve
 from gemini import Gemini, GeminiErro, GeminiSemLogin
 
+# erros do TikTok que valem para a conta toda (os demais so afetam aquele video)
+PARAR_TIKTOK = ("rate_limit", "spam_risk", "too_many", "access_token", "scope_not_authorized",
+                "user_banned", "sem login")
 HISTORICO = Path("historico.json")
 PRONTOS = Path("prontos")
 TRABALHO = Path("trabalho")
@@ -97,7 +100,8 @@ def publicar(h: dict, cfg: dict, enviados: dict) -> None:
                 log(f"TikTok OK (rascunho na caixa de entrada): {e['titulo']}")
             except (Exception, SystemExit) as ex:
                 log(f"TikTok falhou ({e['id']}): {str(ex)[:200]}")
-                enviados["tt_parou"] = True   # limite/login: tenta de novo na proxima execucao
+                if any(k in str(ex) for k in PARAR_TIKTOK):
+                    enviados["tt_parou"] = True   # limite/login: tenta de novo na proxima execucao
         salvar_historico(h)
 
 
@@ -125,7 +129,7 @@ def main() -> None:
                 plano = None
                 if gem:
                     try:
-                        plano = gem.analisar(bruto, c, dur)
+                        plano = gem.analisar(versao_leve(bruto, TRABALHO / 'leve' / bruto.name), c, dur)
                     except GeminiSemLogin:
                         log("Gemini sem login (rode: python gemini.py login); editando sem ele")
                         gem.__exit__(None, None, None)
