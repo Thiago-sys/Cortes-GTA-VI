@@ -3,7 +3,22 @@ import json
 import subprocess
 from pathlib import Path
 
-_nvenc_ruim = False
+# encoders de GPU: NVIDIA (nvenc), AMD (amf), Intel (qsv). "auto" tenta cada um e cai na CPU.
+ENCODERS = {
+    "nvenc": ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "24"],
+    "amf": ["-c:v", "h264_amf", "-quality", "balanced", "-rc", "vbr_peak", "-qp_i", "24",
+            "-qp_p", "26"],
+    "qsv": ["-c:v", "h264_qsv", "-preset", "medium", "-global_quality", "24"],
+}
+_gpu_ruim: set[str] = set()   # encoders que ja falharam nesta execucao
+
+
+def _encoders(pref: str) -> list[str]:
+    """Ordem de tentativa. pref: auto | nvenc | amf | qsv | cpu."""
+    if pref == "cpu":
+        return ["cpu"]
+    lista = list(ENCODERS) if pref == "auto" else [pref]
+    return [n for n in lista if n not in _gpu_ruim] + ["cpu"]
 
 
 def _probe(video: Path) -> dict:
@@ -55,7 +70,6 @@ def _legendas_finais(legendas, previa):
 
 def editar(origem: Path, saida: Path, plano: dict, cfg: dict) -> Path:
     """plano: {previa: (ini, fim)|None, legendas: [(ini, fim, texto)]} (tempos do clipe original)."""
-    global _nvenc_ruim
     e = cfg["edicao"]
     info = _probe(origem)
     tem_audio = any(s["codec_type"] == "audio" for s in info["streams"])
@@ -99,16 +113,18 @@ def editar(origem: Path, saida: Path, plano: dict, cfg: dict) -> Path:
     fim = (["-c:a", "aac", "-b:a", "128k"] if tem_audio else []) + [
         "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(saida.resolve())]
     # maxrate 4M: ate 90 s ~ 45 MB, cabe no limite de 64 MB do envio ao TikTok
-    gpu = ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "24",
-           "-maxrate", "4M", "-bufsize", "8M"]
-    cpu = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-maxrate", "4M", "-bufsize", "8M"]
+    taxa = ["-maxrate", "4M", "-bufsize", "8M"]
+    cpu = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"] + taxa
     try:
-        if e.get("encoder", "auto") != "cpu" and not _nvenc_ruim:
-            try:
-                subprocess.run(base + gpu + fim, check=True, cwd=saida.parent, capture_output=True)   # sem a placa NVIDIA, cai na CPU em silencio
+        for nome in _encoders(e.get("encoder", "auto")):
+            if nome == "cpu":
+                break
+            try:   # GPU indisponivel nesta maquina: falha em silencio e tenta o proximo
+                subprocess.run(base + ENCODERS[nome] + taxa + fim, check=True,
+                               cwd=saida.parent, capture_output=True)
                 return saida
             except (subprocess.CalledProcessError, FileNotFoundError):
-                _nvenc_ruim = True
+                _gpu_ruim.add(nome)
         subprocess.run(base + cpu + fim, check=True, cwd=saida.parent)
     finally:
         ass.unlink(missing_ok=True)

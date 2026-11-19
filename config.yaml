@@ -11,7 +11,7 @@ edicao:
   previa_max_seg: 4        # trecho de previa (ponto de interesse) colocado no inicio
   usar_previa: true
   usar_legendas: true      # Gemini decide se o clipe precisa; false = nunca legendar
-  encoder: auto            # auto = NVENC (placa NVIDIA) se funcionar, senao CPU; cpu = so CPU
+  encoder: auto            # auto = tenta NVIDIA (nvenc), AMD (amf), Intel (qsv) e cai na CPU; ou fixe: nvenc | amf | qsv | cpu
 
 gemini:
   url: "https://gemini.google.com/app?hl=en"
