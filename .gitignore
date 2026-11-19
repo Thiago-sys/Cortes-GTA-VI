@@ -1,0 +1,13 @@
+trabalho/
+prontos/
+.perfil_gemini/
+__pycache__/
+.venv/
+client_secret*.json
+token.json
+tiktok_client.json
+tiktok_token.json
+twitch_client.json
+historico.json
+log.txt
+site/

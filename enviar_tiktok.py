@@ -1,0 +1,150 @@
+"""Login com TikTok (Login Kit) e envio de cortes via Content Posting API.
+
+NAO TESTADO contra a API real: ajuste conforme a documentacao atual do TikTok.
+
+Configuracao: crie tiktok_client.json ao lado deste arquivo:
+  {"client_key": "...", "client_secret": "...", "redirect_uri": "http://localhost:8765/callback"}
+O redirect_uri deve estar cadastrado igual no portal do TikTok.
+
+Uso:
+  python enviar_tiktok.py login            # autoriza a conta (1a vez)
+  python enviar_tiktok.py login --manual   # redirect_uri https (callback.html): cola a URL final
+O rodar.py envia cada corte como RASCUNHO (caixa de entrada do app; voce toca em publicar).
+Em app nao auditado, a conta precisa estar como usuario de teste no portal do TikTok.
+"""
+import hashlib
+import json
+import secrets
+import sys
+import time
+import urllib.parse
+import webbrowser
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+
+import requests
+
+API = "https://open.tiktokapis.com"
+
+
+def cliente() -> dict:
+    return json.loads(Path("tiktok_client.json").read_text(encoding="utf-8"))
+
+
+def _receber_local(c: dict, url: str) -> dict:
+    achado = {}
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            achado.update({k: v[0] for k, v in q.items()})
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write("<h3>Autorizado. Pode fechar esta aba.</h3>".encode())
+
+        def log_message(self, *a):
+            pass
+
+    porta = urllib.parse.urlparse(c["redirect_uri"]).port or 80
+    srv = HTTPServer(("localhost", porta), H)
+    print("Abrindo o navegador para autorizar no TikTok...")
+    webbrowser.open(url)
+    srv.handle_request()
+    return achado
+
+
+def login(token: Path, direto: bool = False) -> None:
+    c = cliente()
+    escopos = "user.info.basic,video.upload" + (",video.publish" if direto else "")
+    verifier = secrets.token_urlsafe(48)
+    # TikTok usa o SHA256 do verifier em hexadecimal (nao base64url)
+    challenge = hashlib.sha256(verifier.encode()).hexdigest()
+    state = secrets.token_urlsafe(16)
+    url = "https://www.tiktok.com/v2/auth/authorize/?" + urllib.parse.urlencode({
+        "client_key": c["client_key"], "scope": escopos, "response_type": "code",
+        "redirect_uri": c["redirect_uri"], "state": state,
+        "code_challenge": challenge, "code_challenge_method": "S256"})
+
+    achado = {}
+    host = urllib.parse.urlparse(c["redirect_uri"]).hostname
+    # redirect_uri que nao e localhost (ex.: GitHub Pages) nunca chega aqui: modo manual
+    if "--manual" in sys.argv or host not in ("localhost", "127.0.0.1"):
+        # redirect_uri em https (ex.: GitHub Pages): cole aqui a URL final do navegador
+        print("Abrindo o navegador para autorizar no TikTok...")
+        webbrowser.open(url)
+        print("Depois de autorizar, copie o endereco completo da pagina que abrir e cole aqui.",
+              flush=True)
+        colada = input("Endereco: ").strip()
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(colada).query)
+        achado.update({k: v[0] for k, v in q.items()})
+    else:
+        achado = _receber_local(c, url)
+    if achado.get("state") != state or "code" not in achado:
+        raise SystemExit(f"Autorizacao falhou: {achado}")
+
+    r = requests.post(f"{API}/v2/oauth/token/", data={
+        "client_key": c["client_key"], "client_secret": c["client_secret"],
+        "code": achado["code"], "grant_type": "authorization_code",
+        "redirect_uri": c["redirect_uri"], "code_verifier": verifier}, timeout=30)
+    dados = r.json()
+    if "access_token" not in dados:
+        raise SystemExit(f"Erro no token: {dados}")
+    token.write_text(json.dumps(dados), encoding="utf-8")
+    print("Login OK. Permissoes concedidas:", dados.get("scope"))
+
+
+def renovar(token: Path) -> str:
+    t = json.loads(token.read_text())
+    c = cliente()
+    r = requests.post(f"{API}/v2/oauth/token/", data={
+        "client_key": c["client_key"], "client_secret": c["client_secret"],
+        "grant_type": "refresh_token", "refresh_token": t["refresh_token"]}, timeout=30).json()
+    if "access_token" in r:
+        token.write_text(json.dumps(r), encoding="utf-8")
+        return r["access_token"]
+    return t["access_token"]
+
+
+def enviar_video(video: Path, titulo: str, direto: bool, token: Path) -> str:
+    acesso = renovar(token)
+    h = {"Authorization": f"Bearer {acesso}", "Content-Type": "application/json; charset=UTF-8"}
+    tam = video.stat().st_size
+    if tam > 64 * 1024 * 1024:
+        raise SystemExit(f"{video.name} tem mais de 64 MB; envio em varios blocos nao implementado")
+    fonte = {"source": "FILE_UPLOAD", "video_size": tam, "chunk_size": tam, "total_chunk_count": 1}
+    if direto:
+        info = requests.post(f"{API}/v2/post/publish/creator_info/query/", headers=h, timeout=30).json()
+        niveis = info["data"]["privacy_level_options"]
+        corpo = {"post_info": {"title": titulo[:150], "privacy_level": niveis[0]},
+                 "source_info": fonte}
+        url = f"{API}/v2/post/publish/video/init/"
+    else:
+        corpo = {"source_info": fonte}
+        url = f"{API}/v2/post/publish/inbox/video/init/"
+    r = requests.post(url, headers=h, json=corpo, timeout=30).json()
+    if r.get("error", {}).get("code") not in (None, "ok"):
+        raise SystemExit(f"Erro no init: {r}")
+    up = r["data"]["upload_url"]
+    put = requests.put(up, data=video.read_bytes(), timeout=600, headers={
+        "Content-Type": "video/mp4", "Content-Length": str(tam),
+        "Content-Range": f"bytes 0-{tam - 1}/{tam}"})
+    put.raise_for_status()
+    return r["data"]["publish_id"]
+
+
+TOKEN = Path("tiktok_token.json")
+
+
+def enviar(video: Path, titulo: str, direto: bool = False) -> str:
+    """Envia o video (rascunho na caixa de entrada do app; direto=True exige app aprovado)."""
+    if not TOKEN.exists():
+        raise SystemExit("TikTok sem login: rode 'python enviar_tiktok.py login'")
+    return enviar_video(video, titulo[:150], direto, TOKEN)
+
+
+if __name__ == "__main__":
+    if sys.argv[1:2] == ["login"]:
+        login(TOKEN, "--direto" in sys.argv)
+    else:
+        print(__doc__)

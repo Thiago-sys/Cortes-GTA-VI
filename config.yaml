@@ -1,0 +1,27 @@
+# Busca diaria dos clipes mais vistos da Twitch, edicao via Gemini (navegador) e envio.
+twitch:
+  jogo: ["Grand Theft Auto VI", "GTA VI", "Grand Theft Auto 6"]   # nomes da categoria, na ordem de tentativa
+  idioma: pt               # idioma da live (campo language do clipe; aceita pt, pt-br...)
+  quantidade: 5            # clipes novos por execucao
+  janela_horas: 24         # "ultimo dia"
+  duracao_min_seg: 8       # ignora clipes muito curtos
+
+edicao:
+  formato: vertical        # vertical = 1080x1920 com fundo desfocado (Shorts/TikTok); original = mantem 16:9
+  previa_max_seg: 4        # trecho de previa (ponto de interesse) colocado no inicio
+  usar_previa: true
+  usar_legendas: true      # Gemini decide se o clipe precisa; false = nunca legendar
+  encoder: auto            # auto = NVENC (placa NVIDIA) se funcionar, senao CPU; cpu = so CPU
+
+gemini:
+  url: "https://gemini.google.com/app?hl=en"
+  perfil: .perfil_gemini   # perfil proprio do Chrome (login feito uma vez com: python gemini.py login)
+  porta_debug: 9333        # porta local usada para o Playwright controlar o Chrome
+  timeout_resposta_seg: 240
+
+publicacao:
+  youtube: true
+  tiktok: true
+  privacidade_youtube: private   # private ate a auditoria da API; depois pode ser public
+  hashtags: ["#GTA6", "#GTAVI", "#Shorts"]
+  max_youtube_por_dia: 5         # cota gratuita da API: ~6 envios/dia
