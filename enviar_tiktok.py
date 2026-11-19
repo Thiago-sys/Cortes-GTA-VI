@@ -9,6 +9,7 @@ O redirect_uri deve estar cadastrado igual no portal do TikTok.
 Uso:
   python enviar_tiktok.py login            # autoriza a conta (1a vez)
   python enviar_tiktok.py login --manual   # redirect_uri https (callback.html): cola a URL final
+  python enviar_tiktok.py status           # situacao de cada video enviado (rascunho, publicado, falhou)
 O rodar.py envia cada corte como RASCUNHO (caixa de entrada do app; voce toca em publicar).
 Em app nao auditado, a conta precisa estar como usuario de teste no portal do TikTok.
 """
@@ -135,6 +136,39 @@ def enviar_video(video: Path, titulo: str, direto: bool, token: Path) -> str:
 
 TOKEN = Path("tiktok_token.json")
 
+SIGNIFICADO = {
+    "PROCESSING_DOWNLOAD": "recebendo o video",
+    "SEND_TO_USER_INBOX": "rascunho aguardando voce na caixa de entrada",
+    "PUBLISH_COMPLETE": "publicado",
+    "FAILED": "falhou",
+}
+
+
+def status(publish_id: str, token: Path = TOKEN) -> dict:
+    acesso = renovar(token)
+    r = requests.post(f"{API}/v2/post/publish/status/fetch/", timeout=30,
+                      headers={"Authorization": f"Bearer {acesso}",
+                               "Content-Type": "application/json; charset=UTF-8"},
+                      json={"publish_id": publish_id}).json()
+    return r.get("data") or {"status": "ERRO", "fail_reason": str(r.get("error"))}
+
+
+def listar_status() -> None:
+    """Consulta na API o estado de cada video enviado (historico.json)."""
+    h = json.loads(Path("historico.json").read_text(encoding="utf-8"))         if Path("historico.json").exists() else {}
+    enviados = [e for e in h.values() if e.get("tiktok_id")]
+    if not enviados:
+        print("Nenhum video enviado ao TikTok no historico.json.")
+        return
+    contagem = {}
+    for e in enviados:
+        s = status(e["tiktok_id"])
+        cod = s.get("status", "?")
+        contagem[cod] = contagem.get(cod, 0) + 1
+        extra = f" ({s['fail_reason']})" if s.get("fail_reason") else ""
+        print(f"[{cod}] {SIGNIFICADO.get(cod, '')}{extra} - {e['titulo'][:60]}")
+    print("\nResumo:", contagem)
+
 
 def enviar(video: Path, titulo: str, direto: bool = False) -> str:
     """Envia o video (rascunho na caixa de entrada do app; direto=True exige app aprovado)."""
@@ -146,5 +180,7 @@ def enviar(video: Path, titulo: str, direto: bool = False) -> str:
 if __name__ == "__main__":
     if sys.argv[1:2] == ["login"]:
         login(TOKEN, "--direto" in sys.argv)
+    elif sys.argv[1:2] == ["status"]:
+        listar_status()
     else:
         print(__doc__)
