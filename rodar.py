@@ -92,14 +92,19 @@ def publicar(h: dict, cfg: dict, enviados: dict) -> None:
                 log(f"YouTube falhou ({e['id']}): {str(ex)[:200]}")
                 if ex.__class__.__name__ in ("CotaEsgotada", "SystemExit"):
                     enviados["yt"] = 10**6   # nao insiste nos demais
-        if pub.get("tiktok") and not e.get("tiktok_id") and not enviados.get("tt_parou"):
+        if pub.get("tiktok") and not e.get("tiktok_id") and not enviados.get("tt_parou")                 and enviados.get("tt", 0) < pub.get("max_tiktok_por_dia", 5):
             try:
                 import enviar_tiktok as t
                 tags = " ".join(e["hashtags"])
                 e["tiktok_id"] = t.enviar(video, f"{e['titulo'][:150 - len(tags) - 1]} {tags}")
+                enviados["tt"] = enviados.get("tt", 0) + 1
                 log(f"TikTok OK (rascunho na caixa de entrada): {e['titulo']}")
             except (Exception, SystemExit) as ex:
                 log(f"TikTok falhou ({e['id']}): {str(ex)[:200]}")
+                if "too_many_pending" in str(ex):
+                    log("TikTok: limite de rascunhos pendentes (~5). Abra o app, publique ou "
+                        "descarte os rascunhos da caixa de entrada e rode de novo; os demais "
+                        "videos ficam para a proxima execucao.")
                 if any(k in str(ex) for k in PARAR_TIKTOK):
                     enviados["tt_parou"] = True   # limite/login: tenta de novo na proxima execucao
         salvar_historico(h)
