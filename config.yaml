@@ -16,6 +16,8 @@ edicao:
 gemini:
   url: "https://gemini.google.com/app?hl=en"
   perfil: .perfil_gemini   # perfil proprio do Chrome (login feito uma vez com: python gemini.py login)
+  modelo: "Ajuda diaria"   # modo do Gemini escolhido a cada conversa (texto do seletor; ex.: Auto,
+                           # Ajuda diaria = mais rapido, Analise mais aprofundada = mais lento). Vazio = nao mexe.
   porta_debug: 9333        # porta local usada para o Playwright controlar o Chrome
   timeout_resposta_seg: 240
 
