@@ -31,11 +31,29 @@ def log(msg: str) -> None:
 
 
 def carregar_historico() -> dict:
-    return json.loads(HISTORICO.read_text(encoding="utf-8")) if HISTORICO.exists() else {}
+    """Le o historico; se estiver vazio/corrompido, guarda uma copia e recomeca em vez de travar."""
+    if not HISTORICO.exists():
+        return {}
+    texto = HISTORICO.read_text(encoding="utf-8").strip()
+    if not texto:
+        return {}
+    try:
+        h = json.loads(texto)
+        if isinstance(h, dict):
+            return h
+    except json.JSONDecodeError:
+        pass
+    copia = HISTORICO.with_suffix(".json.corrompido")
+    shutil.copy(HISTORICO, copia)
+    log(f"historico.json invalido; copia salva em {copia.name} e comecando um novo")
+    return {}
 
 
 def salvar_historico(h: dict) -> None:
-    HISTORICO.write_text(json.dumps(h, ensure_ascii=False, indent=2), encoding="utf-8")
+    """Grava em arquivo temporario e troca (atomico): uma queda no meio nao corrompe o historico."""
+    tmp = HISTORICO.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(h, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(HISTORICO)
 
 
 def montar_textos(clipe: dict, plano: dict | None, cfg: dict) -> tuple[str, str, list[str]]:
