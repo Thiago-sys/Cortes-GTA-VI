@@ -55,7 +55,9 @@ def enviar(yt, video: Path, titulo: str, descricao: str, privacidade: str) -> st
         while resp is None:
             _, resp = req.next_chunk()
     except HttpError as e:
-        if "quota" in str(e).lower():
+        msg = str(e).lower()
+        # cota da API OU limite diario de videos do canal (canal sem verificacao de telefone)
+        if "quota" in msg or "exceeded the number of videos" in msg or "uploadlimitexceeded" in msg:
             raise CotaEsgotada(str(e))
         raise
     return resp["id"]
