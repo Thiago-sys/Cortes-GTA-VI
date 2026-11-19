@@ -20,7 +20,8 @@ clipe sai sem previa/legenda (titulo do proprio clipe) em vez de ser perdido.
 
 ## Usar
 - `rodar.bat` / `python rodar.py`: rotina completa. `--sem-publicar`: so edita (veja `prontos/`).
-  `--sem-gemini`: edita sem o Gemini.
+  `--sem-gemini`: edita sem o Gemini. `--so-publicar`: nao busca nem edita, so envia ao YouTube/TikTok
+  o que ja esta pronto e pendente (use depois de limite de cota/rascunhos).
 - `agendar.bat [HH:MM]`: agenda todo dia (padrao 09:00). Computador ligado e usuario logado.
 - `historico.json` evita duplicados e guarda o que ja foi enviado; envios que falharam (cota, rede)
   sao retomados na proxima execucao. `log.txt` tem o registro. Se o Gemini quebrar, veja `gemini_erro.png`.

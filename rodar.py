@@ -4,6 +4,7 @@ Uso:
   python rodar.py                 rotina completa
   python rodar.py --sem-publicar  baixa e edita, mas nao envia (confira em prontos/)
   python rodar.py --sem-gemini    edita sem o Gemini (sem previa/legenda; titulo = o do clipe)
+  python rodar.py --so-publicar   nao busca nem edita: so envia o que ja esta em prontos/ e pendente
 Os envios que falharam (cota, rede) sao retomados na execucao seguinte.
 """
 import json
@@ -111,6 +112,15 @@ def main() -> None:
     cfg = yaml.safe_load(Path("config.yaml").read_text(encoding="utf-8"))
     h = carregar_historico()
     enviados = {"yt": 0}
+
+    if "--so-publicar" in args:
+        pend = [e for e in h.values() if e.get("arquivo") and Path(e["arquivo"]).exists()
+                and ((cfg["publicacao"].get("youtube") and not e.get("youtube_id"))
+                     or (cfg["publicacao"].get("tiktok") and not e.get("tiktok_id")))]
+        log(f"Somente publicar: {len(pend)} video(s) pendente(s) em prontos/")
+        publicar(h, cfg, enviados)
+        log("Fim.")
+        return
 
     novos = twitch.buscar(cfg, set(h))
     log(f"{len(novos)} clipe(s) novo(s) de GTA 6 em {cfg['twitch']['idioma']}")
