@@ -31,6 +31,8 @@ BOTOES_ANEXO = ("button[aria-label*='Carregar' i], button[aria-label*='Upload' i
 ITEM_ARQUIVOS = re.compile(r"^\s*(Arquivos|Files|Upload files?|Enviar arquivos?|"
                            r"Fazer upload.*|Carregar arquivos?)\s*$", re.I)
 AVISO_OK = re.compile(r"^\s*(Concordar|Agree|I agree|Accept|Aceitar)\s*$", re.I)
+SELETOR_MODO = ("button[aria-label*='seletor de modo' i], button[aria-label*='mode picker' i], "
+                "button[aria-label*='Open mode' i]")
 AVATAR = "a[href*='SignOutOptions']"   # so existe com a conta logada, em qualquer idioma
 
 JS_SOLTAR = """([nome, b64]) => {
@@ -42,6 +44,12 @@ JS_SOLTAR = """([nome, b64]) => {
     for (const t of ['dragenter', 'dragover', 'drop'])
         alvo.dispatchEvent(new DragEvent(t, {bubbles: true, cancelable: true, dataTransfer: dt}));
 }"""
+
+
+def _sem_acento(t: str) -> str:
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", t.lower())
+                   if unicodedata.category(c) != "Mn")
 
 
 class GeminiErro(Exception):
@@ -168,15 +176,23 @@ class Gemini:
         return self
 
     def __exit__(self, *a):
+        # fecha o Chrome de forma graciosa (Browser.close): matar o processo a forca perde os
+        # cookies ainda nao gravados e desloga a conta do Google
         try:
             if self.browser:
-                self.browser.close()
+                self.browser.new_browser_cdp_session().send("Browser.close")
         except Exception:
             pass
         if self.pw:
-            self.pw.stop()
+            try:
+                self.pw.stop()
+            except Exception:
+                pass
         if self.proc and self.proc.poll() is None:
-            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=20)
+            except Exception:
+                self.proc.terminate()
 
     def _logado(self) -> bool:
         """O Gemini mostra a caixa de texto ate deslogado: o sinal real e o avatar da conta."""
@@ -191,6 +207,28 @@ class Gemini:
         self.page.goto(self.g["url"], wait_until="domcontentloaded")
         if not self._logado():
             raise GeminiSemLogin("Gemini sem login (rode: python gemini.py login)")
+        if self.g.get("modelo"):
+            self._escolher_modelo(str(self.g["modelo"]))
+
+    def _escolher_modelo(self, nome: str):
+        """Seleciona o modo do Gemini pelo texto (ex.: 'Ajuda diaria', 'Auto'). Se nao achar, segue
+        com o modo atual em vez de falhar."""
+        p = self.page
+        try:
+            p.locator(SELETOR_MODO).first.click(timeout=5000)
+            itens = p.locator("[role=menuitem], [role=menuitemradio], [role=option], "
+                              ".mat-mdc-menu-item, button.bard-mode-list-button")
+            itens.first.wait_for(timeout=4000)
+            time.sleep(0.5)
+            alvo = _sem_acento(nome)
+            for i in range(itens.count()):
+                if alvo in _sem_acento(itens.nth(i).inner_text()):
+                    itens.nth(i).click(timeout=3000)
+                    return
+            print(f"  modelo '{nome}' nao encontrado no seletor; usando o atual", flush=True)
+        except Exception:
+            pass
+        p.keyboard.press("Escape")
 
     def login(self):
         """Abre o Chrome normal no Gemini; espera voce entrar na conta e confirma sozinho."""
