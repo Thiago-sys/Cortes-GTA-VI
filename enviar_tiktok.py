@@ -153,6 +153,19 @@ def status(publish_id: str, token: Path = TOKEN) -> dict:
     return r.get("data") or {"status": "ERRO", "fail_reason": str(r.get("error"))}
 
 
+def aguardar(publish_id: str, token: Path = TOKEN, limite_seg: int = 60) -> dict:
+    """Espera o TikTok terminar de processar o video: so 'aceitou o arquivo' nao basta, ele ainda
+    pode reprovar depois (formato, duracao, verificacao). Devolve o ultimo status."""
+    fim = time.time() + limite_seg
+    s = {}
+    while time.time() < fim:
+        s = status(publish_id, token)
+        if s.get("status") in ("SEND_TO_USER_INBOX", "PUBLISH_COMPLETE", "FAILED", "ERRO"):
+            break
+        time.sleep(4)
+    return s
+
+
 def listar_status() -> None:
     """Consulta na API o estado de cada video enviado (historico.json)."""
     h = json.loads(Path("historico.json").read_text(encoding="utf-8"))         if Path("historico.json").exists() else {}

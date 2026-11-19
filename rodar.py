@@ -99,7 +99,14 @@ def publicar(h: dict, cfg: dict, enviados: dict) -> None:
                 tags = " ".join(e["hashtags"])
                 e["tiktok_id"] = t.enviar(video, f"{e['titulo'][:150 - len(tags) - 1]} {tags}")
                 enviados["tt"] = enviados.get("tt", 0) + 1
-                log(f"TikTok OK (rascunho na caixa de entrada): {e['titulo']}")
+                st = t.aguardar(e["tiktok_id"])   # confere se o TikTok realmente processou
+                e["tiktok_status"] = st.get("status")
+                if st.get("status") in ("SEND_TO_USER_INBOX", "PUBLISH_COMPLETE"):
+                    log(f"TikTok OK ({st['status']}): {e['titulo']}")
+                else:
+                    e["tiktok_falha"] = str(st.get("fail_reason") or st.get("status"))
+                    log(f"TikTok enviado mas NAO confirmado ({st.get('status')}, "
+                        f"{e['tiktok_falha']}): {e['titulo']}")
             except (Exception, SystemExit) as ex:
                 log(f"TikTok falhou ({e['id']}): {str(ex)[:200]}")
                 if "too_many_pending" in str(ex):
