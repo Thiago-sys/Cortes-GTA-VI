@@ -21,11 +21,17 @@ import yaml
 
 CAIXA = ("rich-textarea [contenteditable='true'], div.ql-editor[contenteditable='true'], "
          "[role='textbox'][contenteditable='true']")
-ENVIAR = "button[aria-label*='Send' i], button.send-button"
-PARAR = "button[aria-label*='Stop' i]"
+ENVIAR = ("button[aria-label*='Send' i], button[aria-label*='Enviar' i], button.send-button")
+PARAR = "button[aria-label*='Stop' i], button[aria-label*='Parar' i]"
 RESPOSTA = "model-response, message-content, .model-response-text"
-BOTOES_ANEXO = ("button[aria-label*='upload' i], button[aria-label*='Add files' i], "
-                "button[aria-label*='attach' i], button.upload-card-button")
+# a interface segue o idioma da conta (pt/en): todos os rotulos tem as duas versoes
+BOTOES_ANEXO = ("button[aria-label*='Carregar' i], button[aria-label*='Upload' i], "
+                "button[aria-label*='Add files' i], button[aria-label*='attach' i], "
+                "button.upload-card-button")
+ITEM_ARQUIVOS = re.compile(r"^\s*(Arquivos|Files|Upload files?|Enviar arquivos?|"
+                           r"Fazer upload.*|Carregar arquivos?)\s*$", re.I)
+AVISO_OK = re.compile(r"^\s*(Concordar|Agree|I agree|Accept|Aceitar)\s*$", re.I)
+AVATAR = "a[href*='SignOutOptions']"   # so existe com a conta logada, em qualquer idioma
 
 JS_SOLTAR = """([nome, b64]) => {
     const bin = atob(b64), u8 = new Uint8Array(bin.length);
@@ -172,34 +178,56 @@ class Gemini:
         if self.proc and self.proc.poll() is None:
             self.proc.terminate()
 
-    def _abrir(self):
-        self.page.goto(self.g["url"], wait_until="domcontentloaded")
+    def _logado(self) -> bool:
+        """O Gemini mostra a caixa de texto ate deslogado: o sinal real e o avatar da conta."""
         try:
             self.page.locator(CAIXA).first.wait_for(timeout=25000)
+            self.page.locator(AVATAR).first.wait_for(state="attached", timeout=10000)
+            return True
         except Exception:
+            return False
+
+    def _abrir(self):
+        self.page.goto(self.g["url"], wait_until="domcontentloaded")
+        if not self._logado():
             raise GeminiSemLogin("Gemini sem login (rode: python gemini.py login)")
 
     def login(self):
-        """Abre o Chrome normal no Gemini. Entre na conta e feche a janela."""
-        print("Entre na conta Google na janela do Chrome e, quando o Gemini abrir, feche a janela.",
-              flush=True)
-        self._lancar([self.g["url"]]).wait()
-        print("Sessao salva em", self.g["perfil"])
+        """Abre o Chrome normal no Gemini; espera voce entrar na conta e confirma sozinho."""
+        with self:
+            self.page.goto(self.g["url"], wait_until="domcontentloaded")
+            self.proc_visivel()
+            print("Entre na conta Google na janela do Chrome (clique em 'Sign in'). "
+                  "Aguardando ate 10 min...", flush=True)
+            fim = time.time() + 600
+            while time.time() < fim:
+                try:
+                    if "gemini.google.com" in self.page.url and self._logado():
+                        print("Login confirmado; sessao salva em", self.g["perfil"])
+                        return
+                except Exception:
+                    pass
+                time.sleep(3)
+        raise GeminiErro("tempo esgotado sem concluir o login")
+
+    def proc_visivel(self):
+        try:
+            self.page.bring_to_front()
+            self.ctx.new_cdp_session(self.page).send(
+                "Browser.setWindowBounds", {"windowId": self.ctx.new_cdp_session(self.page).send(
+                    "Browser.getWindowForTarget")["windowId"], "bounds": {"windowState": "normal"}})
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ interacao
     def _anexar(self, arquivo: Path):
         p = self.page
         anexou = False
-        # 1) botao de anexo -> seletor de arquivos nativo
+        # 1) botao "+" -> menu -> item "Arquivos" -> seletor de arquivos nativo
         try:
+            p.locator(BOTOES_ANEXO).first.click(timeout=5000)
             with p.expect_file_chooser(timeout=8000) as fc:
-                p.locator(BOTOES_ANEXO).first.click(timeout=4000)
-                # o botao "+" pode abrir um menu: o item "Upload files" dispara o seletor
-                item = p.get_by_text(re.compile(r"^\s*Upload files?\s*$", re.I)).first
-                try:
-                    item.click(timeout=2000)
-                except Exception:
-                    pass
+                p.get_by_text(ITEM_ARQUIVOS).first.click(timeout=4000)
             fc.value.set_files(str(arquivo))
             anexou = True
         except Exception:
@@ -209,7 +237,7 @@ class Gemini:
             dados = base64.b64encode(arquivo.read_bytes()).decode()
             p.evaluate(JS_SOLTAR, [arquivo.name, dados])
         try:
-            p.get_by_text(arquivo.name).first.wait_for(timeout=40000)
+            p.get_by_text(arquivo.name).first.wait_for(state="attached", timeout=40000)
         except Exception:
             raise GeminiErro("anexo do video nao apareceu na pagina")
 
@@ -223,11 +251,19 @@ class Gemini:
             try:
                 if botao.is_enabled() and botao.get_attribute("aria-disabled") != "true":
                     botao.click()
+                    self._aceitar_avisos()
                     return
             except Exception:
                 pass
             time.sleep(1)
         raise GeminiErro("botao de enviar nao habilitou (upload do video travou?)")
+
+    def _aceitar_avisos(self):
+        """Aviso de direitos sobre videos (aparece ao enviar video): 'Concordar'."""
+        try:
+            self.page.get_by_role("button", name=AVISO_OK).first.click(timeout=4000)
+        except Exception:
+            pass
 
     def _esperar_resposta(self) -> str:
         p = self.page
