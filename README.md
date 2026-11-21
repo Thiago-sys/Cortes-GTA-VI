@@ -1,10 +1,10 @@
 # cortes-gta
 
-Uma vez por dia: busca na Twitch os 5 clipes de GTA 6 em portugues mais vistos das ultimas 24 h
-(sem repetir os ja usados), pede ao Gemini (pelo navegador, sem API) o ponto de interesse, a
+Uma vez por dia: busca na Twitch e na Kick os 5 clipes de GTA 6 em portugues mais vistos de cada uma
+(ultimas 24 h, sem repetir os ja usados), pede ao Gemini (pelo navegador, sem API) o ponto de interesse, a
 legenda e o titulo, edita com ffmpeg e envia ao YouTube e ao TikTok.
 
-Pipeline: Twitch API -> yt-dlp (download) -> Gemini web (plano de edicao em JSON) -> ffmpeg
+Pipeline: Twitch API / Kick -> yt-dlp (download) -> Gemini web (plano de edicao em JSON) -> ffmpeg
 (previa do ponto de interesse no inicio + legenda + formato vertical 9:16) -> YouTube / TikTok.
 O Gemini web nao devolve video, entao ele decide e o ffmpeg executa. Se o Gemini falhar, o
 clipe sai sem previa/legenda (titulo do proprio clipe) em vez de ser perdido.
@@ -16,6 +16,7 @@ clipe sai sem previa/legenda (titulo do proprio clipe) em vez de ser perdido.
    Teste: `python gemini.py testar algum_clipe.mp4`.
 4. YouTube: `client_secret.json` (OAuth Desktop, YouTube Data API v3) e `python enviar_youtube.py login`.
 5. TikTok: `tiktok_client.json` e `python enviar_tiktok.py login` (rascunhos: voce toca em publicar no app).
+   Kick: nao precisa de login nem credenciais (usa a API publica do site). Desligue com `kick.ativo: false`.
 6. Ajustes em `config.yaml` (jogo, quantidade, previa, legenda, formato, privacidade).
 
 ## Usar
@@ -27,7 +28,12 @@ clipe sai sem previa/legenda (titulo do proprio clipe) em vez de ser perdido.
   sao retomados na proxima execucao. `log.txt` tem o registro. Se o Gemini quebrar, veja `gemini_erro.png`.
 
 ## Observacoes
-- A Twitch nao tem curtidas em clipes: o ranking e por visualizacoes.
+- A Twitch nao tem curtidas em clipes: o ranking e por visualizacoes (na Kick tambem).
+- Kick: o clipe nao informa o idioma, entao usa-se o idioma do canal (da live atual ou do ultimo VOD),
+  guardado em `kick_canais.json`. Canais sem live/VOD recente ficam de fora; use `kick.canais_ignorar`
+  para vetar algum. A API da Kick nao e oficial/documentada e pode mudar.
+- Com Twitch + Kick sao ate 10 cortes novos por dia, mas YouTube/TikTok aceitam ~5 por dia
+  (`max_*_por_dia`): os mais vistos vao primeiro e o resto espera a proxima execucao.
 - Videos enviados por app nao auditado ficam privados no YouTube (`privacidade_youtube`).
 - Clipes sao de terceiros: credite (a descricao ja leva o link do clipe) e confirme que o uso/monetizacao
   e permitido pelos streamers e pelas regras da Twitch.

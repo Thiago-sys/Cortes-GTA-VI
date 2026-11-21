@@ -6,6 +6,15 @@ twitch:
   janela_horas: 24         # "ultimo dia"
   duracao_min_seg: 8       # ignora clipes muito curtos
 
+kick:
+  ativo: true              # false = so Twitch
+  jogo: ["grand-theft-auto-vi", "Grand Theft Auto VI"]   # slug ou nome da categoria, na ordem de tentativa
+  idioma: pt               # idioma do canal (a Kick nao informa no clipe: usa o da live ou do ultimo VOD)
+  quantidade: 5            # clipes novos por execucao
+  janela_horas: 24         # <= 24 usa o "day" da Kick; maior usa a semana filtrada por horas
+  duracao_min_seg: 8
+  canais_ignorar: []       # slugs de canais a nunca usar
+
 edicao:
   formato: vertical        # vertical = 1080x1920 com fundo desfocado (Shorts/TikTok); original = mantem 16:9
   previa_max_seg: 4        # trecho de previa (ponto de interesse) colocado no inicio

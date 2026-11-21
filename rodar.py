@@ -1,4 +1,4 @@
-"""Rotina diaria: busca os clipes mais vistos de GTA 6 (pt) na Twitch, edita via Gemini e publica.
+"""Rotina diaria: busca os clipes mais vistos de GTA 6 (pt) na Twitch e na Kick, edita via Gemini e publica.
 
 Uso:
   python rodar.py                 rotina completa
@@ -15,6 +15,7 @@ from pathlib import Path
 
 import yaml
 
+import kick
 import twitch
 from editar import duracao_video, editar, versao_leve
 from gemini import Gemini, GeminiErro, GeminiSemLogin
@@ -67,7 +68,8 @@ def montar_textos(clipe: dict, plano: dict | None, cfg: dict) -> tuple[str, str,
     for t in cfg["publicacao"]["hashtags"] + plano.get("hashtags", []):
         if t.lower() not in [x.lower() for x in tags]:
             tags.append(t)
-    corpo = [plano.get("descricao") or "", f"Clipe de {clipe['broadcaster_name']} na Twitch: {clipe['url']}",
+    plataforma = "Kick" if clipe.get("fonte") == "kick" else "Twitch"
+    corpo = [plano.get("descricao") or "", f"Clipe de {clipe['broadcaster_name']} na {plataforma}: {clipe['url']}",
              " ".join(tags)]
     return titulo, "\n\n".join(p for p in corpo if p), tags
 
@@ -135,7 +137,15 @@ def main() -> None:
         return
 
     novos = twitch.buscar(cfg, set(h))
-    log(f"{len(novos)} clipe(s) novo(s) de GTA 6 em {cfg['twitch']['idioma']}")
+    log(f"Twitch: {len(novos)} clipe(s) novo(s) de GTA 6 em {cfg['twitch']['idioma']}")
+    if cfg.get("kick", {}).get("ativo", True) and "kick" in cfg:
+        try:
+            da_kick = kick.buscar(cfg, set(h))
+        except (Exception, SystemExit) as ex:   # a Kick fora do ar nao pode derrubar a Twitch
+            da_kick = []
+            log(f"Kick indisponivel: {str(ex)[:200]}")
+        log(f"Kick: {len(da_kick)} clipe(s) novo(s) de GTA 6 em {cfg['kick']['idioma']}")
+        novos += da_kick
 
     gem = None
     if novos and "--sem-gemini" not in args:
@@ -146,7 +156,7 @@ def main() -> None:
     try:
         for c in novos:
             try:
-                bruto = twitch.baixar(c, TRABALHO)
+                bruto = (kick if c.get('fonte') == 'kick' else twitch).baixar(c, TRABALHO)
                 dur = duracao_video(bruto)
                 plano = None
                 if gem:
@@ -164,11 +174,13 @@ def main() -> None:
                 h[c["id"]] = {"id": c["id"], "arquivo": str(saida), "titulo": titulo,
                               "descricao": descricao, "hashtags": tags, "views": c["view_count"],
                               "streamer": c["broadcaster_name"], "url": c["url"],
+                              "fonte": c.get("fonte", "twitch"),
                               "gemini": plano is not None,
                               "data": datetime.now().isoformat(timespec="seconds")}
                 salvar_historico(h)
                 bruto.unlink(missing_ok=True)
-                log(f"Pronto: {titulo} ({c['broadcaster_name']}, {c['view_count']} views)"
+                log(f"Pronto: {titulo} ({c['broadcaster_name']}, {c['view_count']} views, "
+                    f"{c.get('fonte', 'twitch')})"
                     + ("" if plano else " [sem Gemini]"))
             except Exception as ex:
                 log(f"Falhou no clipe {c['id']}: {str(ex)[:200]}")
