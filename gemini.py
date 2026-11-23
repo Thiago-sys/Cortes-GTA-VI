@@ -33,6 +33,9 @@ ITEM_ARQUIVOS = re.compile(r"^\s*(Arquivos|Files|Upload files?|Enviar arquivos?|
 AVISO_OK = re.compile(r"^\s*(Concordar|Agree|I agree|Accept|Aceitar)\s*$", re.I)
 SELETOR_MODO = ("button[aria-label*='seletor de modo' i], button[aria-label*='mode picker' i], "
                 "button[aria-label*='Open mode' i]")
+TEMPORARIO = ("button[aria-label*='Temporary chat' i], button[aria-label*='Chat temporário' i], "
+              "button[aria-label*='Chat temporario' i], a[aria-label*='Temporary chat' i], "
+              "a[aria-label*='Chat temporário' i]")
 AVATAR = "a[href*='SignOutOptions']"   # so existe com a conta logada, em qualquer idioma
 
 JS_SOLTAR = """([nome, b64]) => {
@@ -65,6 +68,7 @@ def prompt(clipe: dict, cfg: dict, duracao: float) -> str:
     formato = ('{"ponto_interesse": {"inicio": "MM:SS.s", "fim": "MM:SS.s"}, '
                '"precisa_legenda": true, '
                '"legendas": [{"inicio": "MM:SS.s", "fim": "MM:SS.s", "texto": "..."}], '
+               '"trechos_sensiveis": [{"inicio": "MM:SS.s", "fim": "MM:SS.s"}], '
                '"titulo": "...", "descricao": "...", "hashtags": ["#GTA6"]}')
     return (
         f"Voce e editor de videos curtos (Shorts/TikTok). Assista ao clipe anexado de GTA 6 "
@@ -77,7 +81,11 @@ def prompt(clipe: dict, cfg: dict, duracao: float) -> str:
         f"legendas: transcreva a fala em portugues do Brasil em frases curtas (ate 7 palavras cada, "
         f"com tempos do clipe original, sem sobreposicao); se quase nao ha fala ou ja existe legenda "
         f"na tela, use precisa_legenda false e legendas []. titulo: ate 70 caracteres, chamativo, "
-        f"sem clickbait falso, sem hashtags. descricao: 1 a 2 frases. hashtags: 3 a 5."
+        f"sem clickbait falso, sem hashtags. descricao: 1 a 2 frases. hashtags: 3 a 5. "
+        f"trechos_sensiveis: trechos (tempos do clipe original) em que APARECE NA IMAGEM conteudo "
+        f"obsceno que o TikTok bloqueia: nudez, partes intimas, atos ou poses sexuais explicitas "
+        f"(do jogo, da tela ou da camera do streamer). Cubra o intervalo inteiro em que aparece; "
+        f"se nao houver nada assim, use []."
     )
 
 
@@ -100,7 +108,7 @@ def extrair_json(texto: str) -> dict:
 def validar(plano: dict, duracao: float, cfg: dict) -> dict:
     """Normaliza o plano: tempos em segundos, dentro do clipe, previa curta, legendas ordenadas."""
     e = cfg["edicao"]
-    saida = {"previa": None, "legendas": [], "titulo": str(plano.get("titulo") or "").strip(),
+    saida = {"previa": None, "legendas": [], "desfoque": [], "titulo": str(plano.get("titulo") or "").strip(),
              "descricao": str(plano.get("descricao") or "").strip(),
              "hashtags": [h.strip() if h.strip().startswith("#") else "#" + h.strip()
                           for h in (plano.get("hashtags") or []) if isinstance(h, str) and h.strip()]}
@@ -127,7 +135,29 @@ def validar(plano: dict, duracao: float, cfg: dict) -> dict:
             if legs[k][1] > legs[k + 1][0]:
                 legs[k] = (legs[k][0], legs[k + 1][0], legs[k][2])
         saida["legendas"] = [l for l in legs if l[1] - l[0] >= 0.2]
+    saida["desfoque"] = _juntar_trechos(plano.get("trechos_sensiveis"), duracao,
+                                         e.get("desfoque_margem_seg", 0.3))
     return saida
+
+
+def _juntar_trechos(trechos, duracao: float, margem: float) -> list[tuple[float, float]]:
+    """Trechos a desfocar: tempos validos, com folga nas pontas, sobrepostos viram um so."""
+    lista = []
+    for t in trechos or []:
+        try:
+            a, b = max(0.0, _tempo(t["inicio"]) - margem), min(duracao, _tempo(t["fim"]) + margem)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if b - a > 0.1:
+            lista.append((a, b))
+    lista.sort()
+    juntos = []
+    for a, b in lista:
+        if juntos and a <= juntos[-1][1]:
+            juntos[-1] = (juntos[-1][0], max(juntos[-1][1], b))
+        else:
+            juntos.append((a, b))
+    return juntos
 
 
 class Gemini:
@@ -207,8 +237,20 @@ class Gemini:
         self.page.goto(self.g["url"], wait_until="domcontentloaded")
         if not self._logado():
             raise GeminiSemLogin("Gemini sem login (rode: python gemini.py login)")
+        if self.g.get("chat_temporario", True):
+            self._chat_temporario()
         if self.g.get("modelo"):
             self._escolher_modelo(str(self.g["modelo"]))
+
+    def _chat_temporario(self):
+        """Liga o 'Chat temporario' (anonimo): a conversa nao aparece no historico da conta.
+        Se o botao nao for achado, segue com chat normal em vez de falhar."""
+        try:
+            self.page.locator(TEMPORARIO).first.click(timeout=6000)
+            self.page.locator(CAIXA).first.wait_for(timeout=10000)
+            time.sleep(1)
+        except Exception:
+            print("  botao de chat temporario nao encontrado; usando chat normal", flush=True)
 
     def _escolher_modelo(self, nome: str):
         """Seleciona o modo do Gemini pelo texto (ex.: 'Ajuda diaria', 'Auto'). Se nao achar, segue

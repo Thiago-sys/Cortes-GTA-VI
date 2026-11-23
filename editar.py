@@ -1,4 +1,5 @@
-"""Aplica com ffmpeg o plano de edicao: previa no inicio, legenda, formato vertical."""
+"""Aplica com ffmpeg o plano de edicao: previa no inicio, legenda, formato vertical e,
+quando pedido (versao do TikTok), desfoque nos trechos obscenos."""
 import json
 import subprocess
 from pathlib import Path
@@ -78,8 +79,9 @@ def versao_leve(origem: Path, destino: Path) -> Path:
     return destino
 
 
-def editar(origem: Path, saida: Path, plano: dict, cfg: dict) -> Path:
-    """plano: {previa: (ini, fim)|None, legendas: [(ini, fim, texto)]} (tempos do clipe original)."""
+def editar(origem: Path, saida: Path, plano: dict, cfg: dict, desfocar: bool = False) -> Path:
+    """plano: {previa: (ini, fim)|None, legendas: [(ini, fim, texto)], desfoque: [(ini, fim)]}
+    (tempos do clipe original). desfocar=True borra os trechos de `desfoque` (inclusive na previa)."""
     e = cfg["edicao"]
     info = _probe(origem)
     tem_audio = any(s["codec_type"] == "audio" for s in info["streams"])
@@ -91,10 +93,18 @@ def editar(origem: Path, saida: Path, plano: dict, cfg: dict) -> Path:
     legendas = plano.get("legendas") if e.get("usar_legendas", True) else []
     saida.parent.mkdir(parents=True, exist_ok=True)
 
+    # 0) desfoque forte nos trechos obscenos, antes de montar previa e clipe (cobre os dois)
+    trechos = (plano.get("desfoque") or []) if desfocar else []
+    vin, f = "[0:v]", ""
+    if trechos:
+        quando = "+".join(f"between(t,{a:.2f},{b:.2f})" for a, b in trechos)
+        f = (f"[0:v]boxblur=luma_radius=min(w\,h)/8:luma_power=3:"
+             f"enable='{quando}'[vb];")
+        vin = "[vb]"
     # 1) trilha de video/audio: [previa] + clipe completo
     if previa:
         a, b = previa
-        f = ("[0:v]split=2[v1][v2];[v1]trim=start={a}:end={b},setpts=PTS-STARTPTS[pv];"
+        f += (vin + "split=2[v1][v2];[v1]trim=start={a}:end={b},setpts=PTS-STARTPTS[pv];"
              "[v2]setpts=PTS-STARTPTS[mv];").format(a=a, b=b)
         if tem_audio:
             f += ("[0:a]asplit=2[a1][a2];[a1]atrim=start={a}:end={b},asetpts=PTS-STARTPTS[pa];"
@@ -102,7 +112,7 @@ def editar(origem: Path, saida: Path, plano: dict, cfg: dict) -> Path:
         else:
             f += "[pv][mv]concat=n=2:v=1:a=0[v0];"
     else:
-        f = "[0:v]null[v0];"
+        f += vin + "null[v0];"
     # 2) formato vertical: fundo desfocado (calculado em imagem 10x menor, bem mais rapido)
     if vertical:
         f += ("[v0]split=2[x][y];[x]scale=108:192:force_original_aspect_ratio=increase,crop=108:192,"
