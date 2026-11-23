@@ -28,6 +28,10 @@ clipe sai sem previa/legenda (titulo do proprio clipe) em vez de ser perdido.
   sao retomados na proxima execucao. `log.txt` tem o registro. Se o Gemini quebrar, veja `gemini_erro.png`.
 
 ## Observacoes
+- Desfoque no TikTok: o Gemini aponta os trechos com conteudo obsceno (nudez/sexo) e o TikTok recebe
+  `prontos/<id>_tiktok.mp4` com eles desfocados (inclusive na previa); o YouTube usa o video sem desfoque.
+  So gera a versao extra quando ha trechos. Desligue com `edicao.desfoque_tiktok: false`. Sem o Gemini
+  (`--sem-gemini` ou falha) nao ha deteccao, entao nada e desfocado.
 - A Twitch nao tem curtidas em clipes: o ranking e por visualizacoes (na Kick tambem).
 - Kick: o clipe nao informa o idioma, entao usa-se o idioma do canal (da live atual ou do ultimo VOD),
   guardado em `kick_canais.json`. Canais sem live/VOD recente ficam de fora; use `kick.canais_ignorar`

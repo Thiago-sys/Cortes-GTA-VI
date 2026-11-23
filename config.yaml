@@ -19,6 +19,8 @@ edicao:
   formato: vertical        # vertical = 1080x1920 com fundo desfocado (Shorts/TikTok); original = mantem 16:9
   previa_max_seg: 4        # trecho de previa (ponto de interesse) colocado no inicio
   usar_previa: true
+  desfoque_tiktok: true    # o Gemini aponta trechos obscenos (nudez/sexo) e o TikTok recebe uma versao com eles desfocados; o YouTube nao
+  desfoque_margem_seg: 0.3 # folga antes/depois de cada trecho desfocado
   usar_legendas: true      # Gemini decide se o clipe precisa; false = nunca legendar
   encoder: auto            # auto = tenta NVIDIA (nvenc), AMD (amf), Intel (qsv) e cai na CPU; ou fixe: nvenc | amf | qsv | cpu
 
@@ -27,7 +29,8 @@ gemini:
   perfil: .perfil_gemini   # perfil proprio do Chrome (login feito uma vez com: python gemini.py login)
   modelo: "Ajuda diaria"   # modo do Gemini escolhido a cada conversa (texto do seletor; ex.: Auto,
                            # Ajuda diaria = mais rapido, Analise mais aprofundada = mais lento). Vazio = nao mexe.
-  porta_debug: 9333        # porta local usada para o Playwright controlar o Chrome
+  chat_temporario: true    # abre cada conversa como "Chat temporario" (nao entra no historico da conta)
+  porta_debug: 9333       # porta local usada para o Playwright controlar o Chrome
   timeout_resposta_seg: 240
 
 publicacao:

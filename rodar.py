@@ -99,7 +99,9 @@ def publicar(h: dict, cfg: dict, enviados: dict) -> None:
             try:
                 import enviar_tiktok as t
                 tags = " ".join(e["hashtags"])
-                e["tiktok_id"] = t.enviar(video, f"{e['titulo'][:150 - len(tags) - 1]} {tags}")
+                tt_video = Path(e.get("arquivo_tiktok") or "")
+                tt_video = tt_video if tt_video.is_file() else video   # com desfoque, se houver
+                e["tiktok_id"] = t.enviar(tt_video, f"{e['titulo'][:150 - len(tags) - 1]} {tags}")
                 enviados["tt"] = enviados.get("tt", 0) + 1
                 st = t.aguardar(e["tiktok_id"])   # confere se o TikTok realmente processou
                 e["tiktok_status"] = st.get("status")
@@ -169,9 +171,16 @@ def main() -> None:
                     except GeminiErro as ex:
                         log(f"Gemini falhou em {c['id']}: {str(ex)[:150]}; editando sem previa/legenda")
                 titulo, descricao, tags = montar_textos(c, plano, cfg)
-                saida = editar(bruto, PRONTOS / f"{c['id']}.mp4",
-                               plano or {"previa": None, "legendas": []}, cfg)
-                h[c["id"]] = {"id": c["id"], "arquivo": str(saida), "titulo": titulo,
+                plano_ed = plano or {"previa": None, "legendas": []}
+                saida = editar(bruto, PRONTOS / f"{c['id']}.mp4", plano_ed, cfg)
+                saida_tt = None
+                if plano_ed.get("desfoque") and cfg["edicao"].get("desfoque_tiktok", True):
+                    # TikTok bloqueia conteudo obsceno: versao propria com esses trechos desfocados
+                    saida_tt = editar(bruto, PRONTOS / f"{c['id']}_tiktok.mp4", plano_ed, cfg,
+                                      desfocar=True)
+                    log(f"Desfoque TikTok em {len(plano_ed['desfoque'])} trecho(s): {c['id']}")
+                h[c["id"]] = {"id": c["id"], "arquivo": str(saida),
+                              "arquivo_tiktok": str(saida_tt) if saida_tt else None, "titulo": titulo,
                               "descricao": descricao, "hashtags": tags, "views": c["view_count"],
                               "streamer": c["broadcaster_name"], "url": c["url"],
                               "fonte": c.get("fonte", "twitch"),
