@@ -82,7 +82,7 @@ def publicar(h: dict, cfg: dict, enviados: dict) -> None:
     yt = None
     for e in pend:
         video = Path(e["arquivo"])
-        if pub.get("youtube") and not e.get("youtube_id") \
+        if pub.get("youtube") and not e.get("youtube_id") and not e.get("so_tiktok") \
                 and enviados["yt"] < pub.get("max_youtube_por_dia", 5):
             try:
                 import enviar_youtube as y
@@ -131,7 +131,8 @@ def main() -> None:
 
     if "--so-publicar" in args:
         pend = [e for e in h.values() if e.get("arquivo") and Path(e["arquivo"]).exists()
-                and ((cfg["publicacao"].get("youtube") and not e.get("youtube_id"))
+                and ((cfg["publicacao"].get("youtube") and not e.get("youtube_id")
+                      and not e.get("so_tiktok"))
                      or (cfg["publicacao"].get("tiktok") and not e.get("tiktok_id")))]
         log(f"Somente publicar: {len(pend)} video(s) pendente(s) em prontos/")
         publicar(h, cfg, enviados)

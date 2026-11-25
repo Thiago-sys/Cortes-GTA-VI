@@ -23,6 +23,10 @@ clipe sai sem previa/legenda (titulo do proprio clipe) em vez de ser perdido.
 - `rodar.bat` / `python rodar.py`: rotina completa. `--sem-publicar`: so edita (veja `prontos/`).
   `--sem-gemini`: edita sem o Gemini. `--so-publicar`: nao busca nem edita, so envia ao YouTube/TikTok
   o que ja esta pronto e pendente (use depois de limite de cota/rascunhos).
+- `python repostar_tiktok.py pasta <pasta>`: reposta pela API do TikTok videos ja publicados (ex.: os
+  postados a mao). Enfileira os originais da pasta (legenda opcional em `<nome>.txt`) so para o TikTok;
+  o envio segue o limite diario normal. Sem os originais: `listar @usuario` (gera `repostar.csv` para
+  marcar) e `baixar`. A API nao apaga videos: apague o antigo no app antes de publicar o rascunho.
 - `agendar.bat [HH:MM]`: agenda todo dia (padrao 09:00). Computador ligado e usuario logado.
 - `historico.json` evita duplicados e guarda o que ja foi enviado; envios que falharam (cota, rede)
   sao retomados na proxima execucao. `log.txt` tem o registro. Se o Gemini quebrar, veja `gemini_erro.png`.
