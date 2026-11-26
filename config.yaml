@@ -36,6 +36,7 @@ gemini:
 publicacao:
   youtube: true
   tiktok: true
+  tiktok_direto: false           # true: posta direto no perfil (privado sem auditoria; exige login --direto)
   privacidade_youtube: private   # private ate a auditoria da API; depois pode ser public
   hashtags: ["#GTA6", "#GTAVI", "#Shorts"]
   max_tiktok_por_dia: 5          # o TikTok recusa acima de ~5 rascunhos pendentes (publique/descarte no app)

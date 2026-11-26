@@ -16,6 +16,8 @@ clipe sai sem previa/legenda (titulo do proprio clipe) em vez de ser perdido.
    Teste: `python gemini.py testar algum_clipe.mp4`.
 4. YouTube: `client_secret.json` (OAuth Desktop, YouTube Data API v3) e `python enviar_youtube.py login`.
 5. TikTok: `tiktok_client.json` e `python enviar_tiktok.py login` (rascunhos: voce toca em publicar no app).
+   Para postar direto no perfil (privado enquanto o app nao for auditado; funciona no Sandbox):
+   `publicacao.tiktok_direto: true` no `config.yaml` e `python enviar_tiktok.py login --direto`.
    Kick: nao precisa de login nem credenciais (usa a API publica do site). Desligue com `kick.ativo: false`.
 6. Ajustes em `config.yaml` (jogo, quantidade, previa, legenda, formato, privacidade).
 
