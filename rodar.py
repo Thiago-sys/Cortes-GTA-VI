@@ -101,7 +101,8 @@ def publicar(h: dict, cfg: dict, enviados: dict) -> None:
                 tags = " ".join(e["hashtags"])
                 tt_video = Path(e.get("arquivo_tiktok") or "")
                 tt_video = tt_video if tt_video.is_file() else video   # com desfoque, se houver
-                e["tiktok_id"] = t.enviar(tt_video, f"{e['titulo'][:150 - len(tags) - 1]} {tags}")
+                e["tiktok_id"] = t.enviar(tt_video, f"{e['titulo'][:150 - len(tags) - 1]} {tags}",
+                                           direto=pub.get("tiktok_direto", False))
                 enviados["tt"] = enviados.get("tt", 0) + 1
                 st = t.aguardar(e["tiktok_id"])   # confere se o TikTok realmente processou
                 e["tiktok_status"] = st.get("status")
